@@ -1,0 +1,474 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Job Vacancies</title>
+    <!-- Load Raleway font from Google Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Raleway:wght@400;600;800&display=swap" rel="stylesheet">
+    <!-- Load Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Set up custom configuration for the "Raleway" font and new colors -->
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        // Updated to Raleway
+                        sans: ['Raleway', 'sans-serif'],
+                    },
+                    // Define the new custom color palette
+                    colors: {
+                        'primary-dark': '#2A3C52',
+                        'primary-accent': '#52BCC2',
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        /* Ensure the body takes up the full space for iframe embedding */
+        body {
+            /* Updated font to Raleway */
+            font-family: 'Raleway', sans-serif;
+            margin: 0;
+            padding: 0;
+            /* Set background to transparent */
+            background-color: transparent; 
+            min-height: 100vh;
+        }
+        /* Style for the main container to ensure it looks good when embedded */
+        #job-listings-container {
+            /* --- FIX: Set width to 100% and remove max-width restriction --- */
+            width: 100%;
+            max-width: 100%;
+            margin: 0 auto;
+            padding: 1rem; 
+        }
+        /* Custom spinner style - using the new accent color */
+        .loader {
+            border-top-color: '#52BCC2'; 
+            border-left-color: '#52BCC2';
+            border-right-color: transparent;
+            border-bottom-color: transparent;
+            animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+    </style>
+</head>
+<body class="text-gray-800">
+
+    <div id="job-listings-container">
+        
+        <!-- Main Title -->
+        <h1 class="text-3xl font-extrabold text-primary-dark mb-6">Current Vacancies</h1>
+        
+        <!-- Search/Filter Bar -->
+        <div class="mb-8 p-4 bg-white rounded-xl shadow-lg">
+            <input type="text" id="job-search-input" 
+                   placeholder="Search by Job Title or School/Location..."
+                   class="w-full p-3 border-2 border-gray-300 rounded-lg focus:border-primary-accent focus:ring-1 focus:ring-primary-accent transition duration-150">
+        </div>
+        
+        <!-- Loading State -->
+        <div id="loading" class="flex flex-col items-center justify-center p-10">
+            <div class="loader ease-linear rounded-full border-4 h-12 w-12 mb-4"></div>
+            <p class="text-lg text-gray-600">Loading job data from the spreadsheet...</p>
+        </div>
+
+        <!-- Error State -->
+        <div id="error-message" class="hidden bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded relative" role="alert">
+            <strong class="font-bold">Error:</strong>
+            <span class="block sm:inline" id="error-text">Could not load job data. Please check the spreadsheet URL or column configuration.</span>
+        </div>
+
+        <!-- Job Cards will be injected here. -->
+        <div id="jobs-list" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-2 gap-6">
+            <!-- Dynamic content goes here -->
+        </div>
+
+        <!-- Empty State -->
+        <div id="empty-message" class="hidden text-center p-10 bg-white rounded-xl shadow-lg mt-6">
+            <svg class="mx-auto h-12 w-12 text-primary-accent" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 13h6m-3-3v6m5 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+            </svg>
+            <h3 class="mt-2 text-sm font-medium text-gray-900">No Jobs Found</h3>
+            <p class="mt-1 text-sm text-gray-500">
+                It looks like there are no current openings available.
+            </p>
+        </div>
+        
+        <!-- UPDATED: Trust Board Vacancies Card -->
+        <div class="mt-10 p-6 bg-white shadow-xl hover:shadow-2xl transition duration-300 ease-in-out transform hover:-translate-y-1 rounded-xl text-center">
+            <h3 class="text-2xl font-extrabold text-primary-dark mb-4">Governance Opportunities</h3>
+            <p class="text-gray-600 mb-6">Explore governance roles and make a strategic impact on our Trust.</p>
+            <a href="https://www.whitewoodsprimaryacademytrust.co.uk/trust-board-director-opportunities" target="_blank" rel="noopener noreferrer"
+               class="inline-block bg-primary-accent hover:bg-primary-dark text-white text-lg font-bold py-3 px-8 rounded-lg transition duration-150 ease-in-out shadow-md hover:shadow-lg focus:outline-none focus:ring-4 focus:ring-primary-accent focus:ring-opacity-50">
+                More Information
+            </a>
+        </div>
+        
+    </div>
+
+    <script>
+        // CRITICAL UPDATE: Switched to the original, canonical document ID for more reliable G-Viz access.
+        const SHEET_DOC_ID = '13OnaZQwyzu7lTTCgI02XVr4Uo_0c_GdQ1o8h4Q4GVrc';
+        const SHEET_GID = '0'; // The 'gid' parameter (0 is usually the first tab)
+        
+        // IMPORTANT: Updated G-Viz query to select columns A through I (A-H + I for Application Pack Link)
+        const GVIZ_QUERY = 'select%20A%2C%20B%2C%20C%2C%20D%2C%20E%2C%20F%2C%20G%2C%20H%2C%20I'; 
+        
+        // FIX: Added 'headers=1' to the tqx parameter to explicitly tell the API how many header rows there are, which helps data range detection.
+        const GVIZ_URL = `https://docs.google.com/spreadsheets/d/${SHEET_DOC_ID}/gviz/tq?tqx=out:json;headers=1&gid=${SHEET_GID}&tq=${GVIZ_QUERY}`;
+
+        // DOM Elements
+        const jobsList = document.getElementById('jobs-list');
+        const loadingSpinner = document.getElementById('loading');
+        const errorMessage = document.getElementById('error-message');
+        const errorText = document.getElementById('error-text');
+        const emptyMessage = document.getElementById('empty-message');
+        
+        // Array to hold all valid jobs for filtering purposes
+        let allJobs = [];
+
+        /**
+         * Retries the fetch request with exponential backoff.
+         */
+        async function retryFetch(url, maxRetries = 3) {
+            for (let i = 0; i < maxRetries; i++) {
+                try {
+                    const response = await fetch(url);
+                    if (response.ok) {
+                        return response;
+                    }
+                    if (i < maxRetries - 1) {
+                        await new Promise(resolve => setTimeout(resolve, 1000 * (2 ** i)));
+                    } else {
+                        throw new Error(`HTTP error! status: ${response.status}`);
+                    }
+                } catch (error) {
+                    if (i < maxRetries - 1) {
+                        await new Promise(resolve => setTimeout(resolve, 1000 * (2 ** i)));
+                    } else {
+                        throw error;
+                    }
+                }
+            }
+        }
+        
+        /**
+         * Formats a raw date value into the UK standard (DD/MM/YYYY).
+         */
+        function formatUkDate(rawDateValue) {
+            if (!rawDateValue) return 'N/A';
+            const date = parseRawDate(rawDateValue);
+            if (date && !isNaN(date.getTime())) {
+                return new Intl.DateTimeFormat('en-GB', {
+                    year: 'numeric',
+                    month: '2-digit',
+                    day: '2-digit'
+                }).format(date);
+            }
+            return 'N/A';
+        }
+
+        /**
+         * Parses the raw response from the Google Visualization API.
+         */
+        function parseGvizResponse(responseText) {
+            try {
+                const start = responseText.indexOf('{');
+                const end = responseText.lastIndexOf('}');
+                if (start === -1 || end === -1 || end < start) {
+                    console.error("Could not find JSON payload in G-Viz response.");
+                    return null;
+                }
+                const jsonString = responseText.substring(start, end + 1);
+                return JSON.parse(jsonString);
+
+            } catch (e) {
+                console.error("Error parsing G-Viz response:", e);
+                return null;
+            }
+        }
+        
+        /**
+         * Reliably parses raw G-Viz date values into a standardized Date object.
+         */
+        function parseRawDate(rawDateValue) {
+            if (!rawDateValue) return null;
+            let date = null;
+
+            if (typeof rawDateValue === 'string' && rawDateValue.startsWith('Date(')) {
+                // Handle G-Viz date format: Date(YYYY, M, D, ...) where M is 0-indexed
+                const match = rawDateValue.match(/Date\((\d+),(\d+),(\d+)/);
+                if (match) {
+                    // M is 0-indexed (9 = October). We use it directly.
+                    date = new Date(parseInt(match[1]), parseInt(match[2]), parseInt(match[3]));
+                }
+            } else {
+                // If the value is a formatted string like "01/10/2025"
+                // Parse it manually to avoid US vs UK format ambiguity (M/D/Y vs D/M/Y)
+                const parts = String(rawDateValue).split('/');
+                if (parts.length === 3) {
+                    // parts[0]=Day, parts[1]=Month (1-indexed), parts[2]=Year
+                    date = new Date(parts[2], parts[1] - 1, parts[0]); // Subtract 1 for 0-indexed month
+                } else {
+                    date = new Date(rawDateValue);
+                }
+            }
+
+            if (date && !isNaN(date.getTime())) {
+                date.setHours(0, 0, 0, 0); // Standardize time to midnight for comparison
+                return date;
+            }
+            return null;
+        }
+
+        /**
+         * Renders a single job card.
+         */
+        function renderJobCard(job) {
+            // Conditional HTML for the Application Pack button (Column I)
+            const applicationPackButton = job.applicationPackLink ? `
+                <a href="${job.applicationPackLink}" target="_blank" rel="noopener noreferrer" 
+                   class="flex-1 inline-block text-center border-2 border-primary-accent text-primary-dark font-medium py-2 px-4 rounded-lg transition duration-150 ease-in-out hover:bg-primary-accent hover:text-white focus:outline-none focus:ring-4 focus:ring-primary-accent focus:ring-opacity-50">
+                    View Pack
+                </a>
+            ` : '';
+
+            // Determine button layout class: if the pack link is present, use flex gap, otherwise it will default to full width.
+            const buttonContainerClasses = job.applicationPackLink ? "flex gap-4" : "";
+
+            return `
+                <div class="bg-white p-6 shadow-xl hover:shadow-2xl transition duration-300 ease-in-out transform hover:-translate-y-1 rounded-xl flex flex-col">
+                    <!-- Job Title -->
+                    <h2 class="text-xl font-bold text-primary-dark mb-1">${job.title}</h2>
+                    
+                    <!-- Location -->
+                    <p class="text-sm font-semibold text-gray-500 mb-2 flex items-center">
+                        <svg class="w-4 h-4 mr-1 text-primary-accent" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"></path></svg>
+                        ${job.location}
+                    </p>
+
+                    <!-- Contract Details (Salary and Hours) -->
+                    <div class="flex flex-wrap gap-x-4 gap-y-2 text-sm font-semibold text-gray-600 mb-4">
+                        <span class="flex items-center">
+                            <!-- Dollar/Currency Icon -->
+                            <svg class="w-4 h-4 mr-1 text-primary-dark" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c1.657 0 3 .895 3 2s-1.343 2-3 2-3-.895-3-2 1.343-2 3-2zM4 16h16M4 12h16"></path></svg>
+                            Salary: ${job.salary}
+                        </span>
+                        <span class="flex items-center">
+                            <!-- Clock Icon -->
+                            <svg class="w-4 h-4 mr-1 text-primary-dark" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6l4 2"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 2a10 10 0 100 20 10 10 0 000-20z"></path></svg>
+                            Hours: ${job.contractHours}
+                        </span>
+                    </div>
+
+                    <!-- Start and Closing Dates -->
+                    <div class="flex flex-wrap gap-x-4 gap-y-2 text-xs font-medium text-gray-400 mb-4">
+                        <span class="flex items-center">
+                            <svg class="w-3 h-3 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                            Starts: ${job.startDate}
+                        </span>
+                        <span class="flex items-center">
+                            <svg class="w-3 h-3 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"></path></svg>
+                            Closes: ${job.closingDate}
+                        </span>
+                    </div>
+                    
+                    <!-- Description Dropdown (using native details/summary) -->
+                    <div class="mb-4 flex-grow">
+                        <details class="group border-t pt-2 mt-2 border-gray-100">
+                            <summary class="flex justify-between items-center cursor-pointer text-sm font-semibold text-primary-dark hover:text-primary-accent transition duration-150 ease-in-out list-none">
+                                <span>View Job Description</span>
+                                <!-- Icon to indicate open/close state -->
+                                <svg class="w-4 h-4 transform group-open:rotate-180 transition-transform duration-200 text-primary-accent" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg>
+                            </summary>
+                            <!-- 'whitespace-pre-wrap' class preserves line breaks from the spreadsheet -->
+                            <div class="mt-2 text-gray-600 text-sm whitespace-pre-wrap">
+                                ${job.description || 'No description provided.'}
+                            </div>
+                        </details>
+                    </div>
+
+                    <!-- Apply Button Container (Updated to handle two buttons) -->
+                    <div class="mt-auto ${buttonContainerClasses} pt-4 border-t border-gray-100">
+                        ${applicationPackButton}
+                        <a href="${job.link}" target="_blank" rel="noopener noreferrer" class="flex-1 inline-block text-center bg-primary-accent hover:bg-primary-dark text-white font-medium py-2 px-4 rounded-lg transition duration-150 ease-in-out focus:outline-none focus:ring-4 focus:ring-primary-accent focus:ring-opacity-50">
+                            Apply Now
+                        </a>
+                    </div>
+                </div>
+            `;
+        }
+
+        /**
+         * Renders the provided array of jobs to the jobs-list container.
+         * @param {Array<Object>} jobsToRender - The array of job objects to display.
+         */
+        function renderJobs(jobsToRender) {
+            if (jobsToRender.length === 0) {
+                emptyMessage.classList.remove('hidden');
+                jobsList.innerHTML = '';
+            } else {
+                emptyMessage.classList.add('hidden');
+                jobsList.innerHTML = jobsToRender.map(renderJobCard).join('');
+            }
+        }
+        
+        /**
+         * Filters the job listings based on the text in the search input.
+         */
+        function handleSearch() {
+            const searchTerm = document.getElementById('job-search-input').value.toLowerCase().trim();
+            
+            // If the search term is empty, show all jobs.
+            if (!searchTerm) {
+                renderJobs(allJobs); 
+                return;
+            }
+
+            // Filter the jobs array: search against job title AND location (school).
+            const filtered = allJobs.filter(job => 
+                job.title.toLowerCase().includes(searchTerm) || 
+                job.location.toLowerCase().includes(searchTerm)
+            );
+
+            renderJobs(filtered);
+        }
+
+
+        /**
+         * Main function to fetch and display the jobs.
+         */
+        async function fetchJobs() {
+            loadingSpinner.classList.remove('hidden');
+            jobsList.innerHTML = '';
+            errorMessage.classList.add('hidden');
+            emptyMessage.classList.add('hidden');
+
+            try {
+                const response = await retryFetch(GVIZ_URL, 3);
+                const rawText = await response.text();
+                const data = parseGvizResponse(rawText);
+
+                if (!data || !data.table) {
+                    throw new Error("Invalid or empty data format received from Google Sheet.");
+                }
+
+                console.log('--- FINAL RAW DATA OBJECT RECEIVED ---');
+                console.log(data);
+                
+                if (!data.table.rows) {
+                    console.log('Data object has table but no "rows" property, or "rows" is null/undefined.');
+                    throw new Error("No data rows found in the sheet response.");
+                }
+                
+                const jobRows = data.table.rows; 
+                console.log(`Job rows to process: ${jobRows.length}`);
+                
+                const currentJobs = [];
+                // Get today's date standardized to midnight for accurate comparison
+                const today = new Date();
+                today.setHours(0, 0, 0, 0);
+
+                jobRows.forEach((row, index) => {
+                    const c = row.c; // 'c' is the array of cells/columns for the row
+                    
+                    // --- COLUMN MAPPING ---
+                    const location = c[0] && c[0].v ? c[0].v : 'Location TBD';    // Column A
+                    const title = c[1] && c[1].v ? c[1].v : 'Untitled Job';        // Column B
+                    const salary = c[2] && c[2].v ? c[2].v : 'Not specified';      // Column C
+                    const contractHours = c[3] && c[3].v ? c[3].v : 'Not specified'; // Column D
+                    
+                    // --- Start Date (Column E) - Handle Dates and Custom Text ---
+                    const rawStartDateValue = c[4] && (c[4].f || c[4].v);
+                    let startDateToDisplay = 'Not specified';
+
+                    if (rawStartDateValue) {
+                        if (typeof rawStartDateValue === 'string' && !rawStartDateValue.startsWith('Date(')) {
+                            // If it's a string that doesn't look like the G-Viz date object, treat as literal text (e.g., "ASAP")
+                            startDateToDisplay = rawStartDateValue;
+                        } else {
+                            // If it's a date string (Date(...)) or another type, try to format it as a date
+                            startDateToDisplay = formatUkDate(rawStartDateValue);
+                        }
+                    }
+                    const startDate = startDateToDisplay; 
+                    
+                    // --- Closing Date (Column F) - Must be a parsable date for expiry filter ---
+                    const rawClosingDateValue = c[5] && (c[5].f || c[5].v);
+                    const closingDate = formatUkDate(rawClosingDateValue);         
+
+                    const description = c[6] && c[6].v ? c[6].v : '';             // Column G
+                    const link = c[7] && c[7].v ? c[7].v : '#';                   // Column H (Apply Link)
+
+                    // NEW: Application Pack Link (Column I)
+                    const applicationPackLink = c[8] && c[8].v ? c[8].v : '';     // Column I
+
+                    // --- VALIDATION AND EXPIRY FILTERING LOGIC ---
+                    
+                    const hasValidTitle = title !== 'Untitled Job';
+                    const hasValidLink = link !== '#';
+                    
+                    let isClosingDateValid = false; 
+                    // This object must be parsed from the raw value for accurate date comparison
+                    const closingDateObjectForComparison = parseRawDate(rawClosingDateValue);
+
+                    console.log(`Today MS: ${today.getTime()} (${today.toDateString()}) | Closing MS: ${closingDateObjectForComparison ? closingDateObjectForComparison.getTime() : 'N/A'}`);
+                    
+                    if (closingDateObjectForComparison) {
+                        // Job is valid if its closing date is today (>= today) or in the future
+                        if (closingDateObjectForComparison.getTime() >= today.getTime()) {
+                            isClosingDateValid = true;
+                        }
+                    }
+
+                    // FOCUSED DIAGNOSTIC LOG
+                    console.log(`Job: ${title} | Closing Date: ${closingDate} | Valid: ${isClosingDateValid}`);
+
+                    // Final inclusion check
+                    if (hasValidTitle && hasValidLink && isClosingDateValid) {
+                        currentJobs.push({ title, location, description, link, closingDate, startDate, salary, contractHours, applicationPackLink });
+                    }
+                });
+                
+                console.log(`Final jobs array length after filtering: ${currentJobs.length}`); 
+
+                loadingSpinner.classList.add('hidden');
+                
+                // Store all valid jobs globally and render them initially
+                allJobs = currentJobs;
+                renderJobs(allJobs); 
+
+            } catch (error) {
+                console.error('Failed to fetch jobs:', error);
+                loadingSpinner.classList.add('hidden');
+                errorMessage.classList.remove('hidden');
+                
+                let troubleshootingMessage = `Failed to fetch data from the Google Sheet. Please check the sheet's sharing permissions ("Anyone with the link can view") and ensure data starts in the first row. Details: ${error.message}`;
+
+                errorText.textContent = troubleshootingMessage;
+            }
+        }
+
+        // Run the main function when the page loads
+        document.addEventListener('DOMContentLoaded', () => {
+            fetchJobs();
+            
+            // Attach filter listener to the search input
+            const searchInput = document.getElementById('job-search-input');
+            if (searchInput) {
+                searchInput.addEventListener('keyup', handleSearch);
+                searchInput.addEventListener('change', handleSearch);
+            }
+        });
+    </script>
+</body>
+</html>
+
